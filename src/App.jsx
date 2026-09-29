@@ -24,7 +24,7 @@ import {
 } from 'lucide-react'
 
 /* =====================================================
-   MUSIC
+   AUDIO / MUSIC
 ===================================================== */
 
 const NOTES = {
@@ -93,12 +93,11 @@ const BASS_NOTES = [
 ]
 
 /*
-  Panjang lagu kira-kira 17 detik.
-  Celebration dipertahankan sedikit
-  lebih lama agar fade terakhir halus.
+  Melody + fade sekitar 17 detik.
+  Animasi celebration mengikuti durasi ini.
 */
 
-const SONG_DURATION_MS = 17500
+const SONG_DURATION_MS = 17400
 
 /* =====================================================
    PHOTOS
@@ -167,31 +166,36 @@ const RANDOM_WISHES = [
 ]
 
 /* =====================================================
-   BACKGROUND PARTICLES
+   AMBIENT DOTS
 ===================================================== */
 
-const FLOATING_DOTS = Array.from(
-  { length: 32 },
-  (_, index) => ({
-    id: index,
+const FLOATING_DOTS =
+  Array.from(
+    { length: 32 },
+    (_, index) => ({
+      id: index,
 
-    left: `${
-      (index * 29 + 9) % 100
-    }%`,
+      left: `${
+        (index * 29 + 9) %
+        100
+      }%`,
 
-    top: `${
-      (index * 43 + 17) % 100
-    }%`,
+      top: `${
+        (index * 43 + 17) %
+        100
+      }%`,
 
-    delay: `${
-      -(index % 8) * 0.8
-    }s`,
+      delay: `${
+        -(index % 8) *
+        0.8
+      }s`,
 
-    size: `${
-      2 + (index % 4)
-    }px`,
-  }),
-)
+      size: `${
+        2 +
+        (index % 4)
+      }px`,
+    }),
+  )
 
 /* =====================================================
    FIREWORKS
@@ -200,63 +204,141 @@ const FLOATING_DOTS = Array.from(
 const FIREWORKS = [
   {
     x: 10,
-    y: 19,
+    y: 18,
     delay: 0.1,
-    scale: 0.75,
+    scale: 0.8,
   },
 
   {
     x: 28,
     y: 12,
-    delay: 0.7,
+    delay: 0.8,
     scale: 1,
   },
 
   {
-    x: 51,
-    y: 19,
-    delay: 1.3,
-    scale: 0.82,
+    x: 50,
+    y: 18,
+    delay: 1.5,
+    scale: 0.75,
   },
 
   {
-    x: 72,
-    y: 13,
-    delay: 0.35,
+    x: 71,
+    y: 12,
+    delay: 0.4,
     scale: 1.05,
   },
 
   {
     x: 90,
-    y: 22,
-    delay: 1.7,
-    scale: 0.78,
+    y: 20,
+    delay: 1.8,
+    scale: 0.75,
   },
 
   {
-    x: 16,
-    y: 48,
-    delay: 2.1,
+    x: 17,
+    y: 47,
+    delay: 2.2,
     scale: 0.8,
   },
 
   {
     x: 83,
-    y: 48,
-    delay: 2.5,
-    scale: 0.88,
+    y: 47,
+    delay: 2.7,
+    scale: 0.9,
   },
 ]
 
-const SPARKS = Array.from(
-  { length: 24 },
-  (_, i) => i,
-)
+const SPARKS =
+  Array.from(
+    { length: 24 },
+    (_, index) => ({
+      id: index,
+      angle:
+        index * 15,
+    }),
+  )
 
-const CONFETTI = Array.from(
-  { length: 74 },
-  (_, i) => i,
-)
+const CONFETTI =
+  Array.from(
+    { length: 78 },
+    (_, index) => {
+      const colors = [
+        '#ff3d9f',
+        '#ff8bc2',
+        '#ffffff',
+        '#ffd27c',
+        '#bd75ff',
+      ]
+
+      return {
+        id: index,
+
+        left:
+          (index * 43 + 7) %
+          100,
+
+        delay:
+          0.7 +
+          (index % 12) *
+            0.12,
+
+        duration:
+          3.4 +
+          (index % 7) *
+            0.35,
+
+        drift:
+          ((index % 5) -
+            2) *
+          32,
+
+        rotation:
+          540 +
+          (index % 6) *
+            120,
+
+        color:
+          colors[
+            index %
+              colors.length
+          ],
+      }
+    },
+  )
+
+const STARS =
+  Array.from(
+    { length: 40 },
+    (_, index) => ({
+      id: index,
+
+      left:
+        (index * 37 + 11) %
+        100,
+
+      top:
+        (index * 59 + 13) %
+        100,
+
+      delay:
+        (index % 9) *
+        0.15,
+
+      duration:
+        2 +
+        (index % 5) *
+          0.45,
+
+      size:
+        7 +
+        (index % 5) *
+          2,
+    }),
+  )
 
 /* =====================================================
    APP
@@ -308,16 +390,33 @@ function App() {
     setWishPulse,
   ] = useState(false)
 
+  /*
+    IMPORTANT:
+    AudioContext TIDAK ditutup setiap lagu berhenti.
+
+    Ini penting terutama untuk Safari/iPhone
+    dan production deployment.
+  */
+
   const audioContextRef =
     useRef(null)
 
-  const audioNodesRef =
+  const musicNodesRef =
     useRef([])
 
-  const timersRef =
-    useRef([])
+  const musicTimerRef =
+    useRef(null)
+
+  const audioKeeperRef =
+    useRef(null)
 
   const holdTimerRef =
+    useRef(null)
+
+  const celebrationTimerRef =
+    useRef(null)
+
+  const wishTimerRef =
     useRef(null)
 
   const heroRef =
@@ -330,32 +429,40 @@ function App() {
     PHOTOS[galleryIndex]
 
   const currentWish =
-    RANDOM_WISHES[wishIndex]
+    RANDOM_WISHES[
+      wishIndex
+    ]
 
   /* ===================================================
-     GALLERY POSITION
+     GALLERY CALCULATION
   =================================================== */
 
   const galleryCards =
     useMemo(() => {
       return PHOTOS.map(
-        (photo, index) => {
+        (
+          photo,
+          index,
+        ) => {
           let offset =
             index -
             galleryIndex
 
           const half =
-            PHOTOS.length / 2
+            PHOTOS.length /
+            2
 
           if (
-            offset > half
+            offset >
+            half
           ) {
             offset -=
               PHOTOS.length
           }
 
           if (
-            offset < -half
+            offset <
+            -half
           ) {
             offset +=
               PHOTOS.length
@@ -371,50 +478,300 @@ function App() {
     }, [galleryIndex])
 
   /* ===================================================
-     STOP MUSIC
+     AUDIO CONTEXT
+  =================================================== */
+
+  const getAudioContext =
+    () => {
+      const AudioCtx =
+        window.AudioContext ||
+        window.webkitAudioContext
+
+      if (!AudioCtx) {
+        return null
+      }
+
+      if (
+        !audioContextRef.current ||
+        audioContextRef
+          .current
+          .state ===
+          'closed'
+      ) {
+        audioContextRef.current =
+          new AudioCtx()
+      }
+
+      return (
+        audioContextRef.current
+      )
+    }
+
+  /*
+    Dipanggil LANGSUNG dari click/pointerDown.
+
+    Jangan menunggu sampai 100% untuk
+    mengaktifkan AudioContext.
+  */
+
+  const unlockAudio =
+    () => {
+      const ctx =
+        getAudioContext()
+
+      if (!ctx) {
+        return null
+      }
+
+      if (
+        ctx.state ===
+        'suspended'
+      ) {
+        ctx
+          .resume()
+          .catch(() => {})
+      }
+
+      /*
+        Silent source kecil.
+
+        Tujuannya membuat Safari / iOS
+        menganggap audio sudah diaktifkan
+        oleh gesture user.
+      */
+
+      try {
+        const oscillator =
+          ctx.createOscillator()
+
+        const gain =
+          ctx.createGain()
+
+        gain.gain
+          .setValueAtTime(
+            0.00001,
+            ctx.currentTime,
+          )
+
+        oscillator.frequency
+          .setValueAtTime(
+            220,
+            ctx.currentTime,
+          )
+
+        oscillator.connect(
+          gain,
+        )
+
+        gain.connect(
+          ctx.destination,
+        )
+
+        oscillator.start()
+
+        oscillator.stop(
+          ctx.currentTime +
+            0.05,
+        )
+
+        oscillator.onended =
+          () => {
+            try {
+              oscillator.disconnect()
+              gain.disconnect()
+            } catch (_) {
+              //
+            }
+          }
+      } catch (_) {
+        //
+      }
+
+      return ctx
+    }
+
+  /*
+    Saat mulai tahan tombol,
+    oscillator sangat pelan dibuat
+    aktif selama beberapa detik.
+
+    Progress 100% butuh ~1.4 detik,
+    jadi context tetap running sampai
+    musik mulai.
+  */
+
+  const armAudioForHold =
+    () => {
+      const ctx =
+        unlockAudio()
+
+      if (!ctx) return
+
+      try {
+        if (
+          audioKeeperRef
+            .current
+        ) {
+          audioKeeperRef
+            .current
+            .oscillator
+            ?.stop()
+        }
+      } catch (_) {
+        //
+      }
+
+      const oscillator =
+        ctx.createOscillator()
+
+      const gain =
+        ctx.createGain()
+
+      oscillator.type =
+        'sine'
+
+      oscillator.frequency
+        .setValueAtTime(
+          160,
+          ctx.currentTime,
+        )
+
+      gain.gain
+        .setValueAtTime(
+          0.00001,
+          ctx.currentTime,
+        )
+
+      oscillator.connect(
+        gain,
+      )
+
+      gain.connect(
+        ctx.destination,
+      )
+
+      oscillator.start()
+
+      oscillator.stop(
+        ctx.currentTime +
+          3,
+      )
+
+      audioKeeperRef.current =
+        {
+          oscillator,
+          gain,
+        }
+
+      oscillator.onended =
+        () => {
+          try {
+            oscillator.disconnect()
+            gain.disconnect()
+          } catch (_) {
+            //
+          }
+
+          if (
+            audioKeeperRef
+              .current
+              ?.oscillator ===
+            oscillator
+          ) {
+            audioKeeperRef.current =
+              null
+          }
+        }
+    }
+
+  const stopAudioKeeper =
+    () => {
+      const keeper =
+        audioKeeperRef.current
+
+      if (!keeper) return
+
+      try {
+        keeper.oscillator
+          .stop()
+      } catch (_) {
+        //
+      }
+
+      try {
+        keeper.oscillator
+          .disconnect()
+
+        keeper.gain
+          .disconnect()
+      } catch (_) {
+        //
+      }
+
+      audioKeeperRef.current =
+        null
+    }
+
+  /* ===================================================
+     STOP CURRENT SONG
   =================================================== */
 
   const stopMusic = () => {
-    audioNodesRef.current.forEach(
-      (node) => {
-        try {
-          if (
-            typeof node.stop ===
-            'function'
-          ) {
-            node.stop()
-          }
-
-          if (
-            typeof node.disconnect ===
-            'function'
-          ) {
-            node.disconnect()
-          }
-        } catch (_) {
-          // ignored
-        }
-      },
-    )
-
-    audioNodesRef.current = []
-
     if (
-      audioContextRef.current
+      musicTimerRef.current
     ) {
-      audioContextRef.current
-        .close()
-        .catch(() => {})
+      clearTimeout(
+        musicTimerRef.current,
+      )
 
-      audioContextRef.current =
+      musicTimerRef.current =
         null
     }
+
+    musicNodesRef.current
+      .forEach(
+        (node) => {
+          try {
+            if (
+              typeof node.stop ===
+              'function'
+            ) {
+              node.stop()
+            }
+          } catch (_) {
+            //
+          }
+
+          try {
+            if (
+              typeof node.disconnect ===
+              'function'
+            ) {
+              node.disconnect()
+            }
+          } catch (_) {
+            //
+          }
+        },
+      )
+
+    musicNodesRef.current =
+      []
+
+    /*
+      JANGAN:
+      audioContextRef.current.close()
+
+      Karena setelah production,
+      browser mobile bisa memblokir
+      AudioContext baru.
+    */
 
     setIsPlaying(false)
   }
 
   /* ===================================================
-     SOFT NOTE
+     SOFT WARM NOTE
   =================================================== */
 
   const createSoftNote = ({
@@ -423,139 +780,164 @@ function App() {
     start,
     duration,
     volume,
-    output,
+    destination,
   }) => {
-    const osc =
+    const main =
       ctx.createOscillator()
 
-    const harmonic =
+    const warm =
       ctx.createOscillator()
 
     const gain =
       ctx.createGain()
 
-    const harmonicGain =
+    const warmGain =
       ctx.createGain()
 
     const filter =
       ctx.createBiquadFilter()
 
-    osc.type = 'sine'
+    main.type = 'sine'
 
-    harmonic.type =
+    warm.type =
       'triangle'
 
-    osc.frequency.setValueAtTime(
-      frequency,
-      start,
-    )
+    main.frequency
+      .setValueAtTime(
+        frequency,
+        start,
+      )
 
-    harmonic.frequency.setValueAtTime(
-      frequency * 2,
-      start,
-    )
+    warm.frequency
+      .setValueAtTime(
+        frequency * 2,
+        start,
+      )
+
+    /*
+      sedikit detune supaya tidak
+      terdengar seperti ringtone.
+    */
+
+    main.detune
+      .setValueAtTime(
+        -2,
+        start,
+      )
+
+    warm.detune
+      .setValueAtTime(
+        3,
+        start,
+      )
 
     filter.type =
       'lowpass'
 
-    filter.frequency.setValueAtTime(
-      1450,
-      start,
-    )
-
-    filter.Q.value = 0.55
-
-    /* main note */
-
-    gain.gain.setValueAtTime(
-      0.0001,
-      start,
-    )
-
-    gain.gain
-      .exponentialRampToValueAtTime(
-        volume,
-        start + 0.075,
+    filter.frequency
+      .setValueAtTime(
+        1350,
+        start,
       )
 
-    gain.gain.setValueAtTime(
-      volume * 0.75,
-      start +
-        duration *
-          0.55,
-    )
+    filter.Q.value =
+      0.45
 
     gain.gain
-      .exponentialRampToValueAtTime(
-        0.0001,
-        start +
-          duration +
-          0.28,
-      )
-
-    /* very soft harmonic */
-
-    harmonicGain.gain
       .setValueAtTime(
         0.0001,
         start,
       )
 
-    harmonicGain.gain
+    gain.gain
       .exponentialRampToValueAtTime(
-        volume * 0.08,
-        start + 0.12,
+        volume,
+        start + 0.065,
       )
 
-    harmonicGain.gain
+    gain.gain
+      .setValueAtTime(
+        volume * 0.75,
+        start +
+          duration *
+            0.5,
+      )
+
+    gain.gain
       .exponentialRampToValueAtTime(
         0.0001,
         start +
           duration +
-          0.18,
+          0.3,
       )
 
-    osc.connect(filter)
+    warmGain.gain
+      .setValueAtTime(
+        0.0001,
+        start,
+      )
 
-    filter.connect(gain)
+    warmGain.gain
+      .exponentialRampToValueAtTime(
+        volume * 0.07,
+        start + 0.1,
+      )
 
-    gain.connect(output)
+    warmGain.gain
+      .exponentialRampToValueAtTime(
+        0.0001,
+        start +
+          duration +
+          0.2,
+      )
 
-    harmonic.connect(
-      harmonicGain,
+    main.connect(
+      filter,
     )
 
-    harmonicGain.connect(
-      output,
+    filter.connect(
+      gain,
     )
 
-    osc.start(start)
+    gain.connect(
+      destination,
+    )
 
-    harmonic.start(start)
+    warm.connect(
+      warmGain,
+    )
 
-    osc.stop(
+    warmGain.connect(
+      destination,
+    )
+
+    main.start(start)
+
+    warm.start(start)
+
+    main.stop(
       start +
         duration +
         0.35,
     )
 
-    harmonic.stop(
+    warm.stop(
       start +
         duration +
-        0.3,
+        0.25,
     )
 
-    audioNodesRef.current.push(
-      osc,
-      harmonic,
+    musicNodesRef.current.push(
+      main,
+      warm,
       gain,
-      harmonicGain,
+      warmGain,
       filter,
     )
   }
 
   /* ===================================================
-     WARM CHORD
+     SOFT CHORD PAD
   =================================================== */
 
   const createWarmChord = ({
@@ -563,11 +945,14 @@ function App() {
     notes,
     start,
     duration,
-    output,
+    destination,
   }) => {
     notes.forEach(
-      (note, index) => {
-        const osc =
+      (
+        note,
+        index,
+      ) => {
+        const oscillator =
           ctx.createOscillator()
 
         const gain =
@@ -576,22 +961,33 @@ function App() {
         const filter =
           ctx.createBiquadFilter()
 
-        osc.type =
+        oscillator.type =
           index === 0
             ? 'sine'
             : 'triangle'
 
-        osc.frequency
+        oscillator.frequency
           .setValueAtTime(
             NOTES[note],
+            start,
+          )
+
+        oscillator.detune
+          .setValueAtTime(
+            index === 0
+              ? -3
+              : 2,
             start,
           )
 
         filter.type =
           'lowpass'
 
-        filter.frequency.value =
-          650
+        filter.frequency
+          .setValueAtTime(
+            600,
+            start,
+          )
 
         gain.gain
           .setValueAtTime(
@@ -602,16 +998,16 @@ function App() {
         gain.gain
           .exponentialRampToValueAtTime(
             index === 0
-              ? 0.015
-              : 0.009,
+              ? 0.014
+              : 0.008,
             start + 0.4,
           )
 
         gain.gain
           .setValueAtTime(
             index === 0
-              ? 0.013
-              : 0.008,
+              ? 0.011
+              : 0.006,
             start +
               duration *
                 0.55,
@@ -624,7 +1020,7 @@ function App() {
               duration,
           )
 
-        osc.connect(
+        oscillator.connect(
           filter,
         )
 
@@ -633,19 +1029,21 @@ function App() {
         )
 
         gain.connect(
-          output,
+          destination,
         )
 
-        osc.start(start)
+        oscillator.start(
+          start,
+        )
 
-        osc.stop(
+        oscillator.stop(
           start +
             duration +
-            0.2,
+            0.1,
         )
 
-        audioNodesRef.current.push(
-          osc,
+        musicNodesRef.current.push(
+          oscillator,
           gain,
           filter,
         )
@@ -662,9 +1060,9 @@ function App() {
     note,
     start,
     duration,
-    output,
+    destination,
   }) => {
-    const osc =
+    const oscillator =
       ctx.createOscillator()
 
     const gain =
@@ -673,9 +1071,10 @@ function App() {
     const filter =
       ctx.createBiquadFilter()
 
-    osc.type = 'sine'
+    oscillator.type =
+      'sine'
 
-    osc.frequency
+    oscillator.frequency
       .setValueAtTime(
         NOTES[note],
         start,
@@ -684,8 +1083,11 @@ function App() {
     filter.type =
       'lowpass'
 
-    filter.frequency.value =
-      250
+    filter.frequency
+      .setValueAtTime(
+        230,
+        start,
+      )
 
     gain.gain
       .setValueAtTime(
@@ -695,8 +1097,8 @@ function App() {
 
     gain.gain
       .exponentialRampToValueAtTime(
-        0.014,
-        start + 0.25,
+        0.012,
+        start + 0.28,
       )
 
     gain.gain
@@ -706,51 +1108,58 @@ function App() {
           duration,
       )
 
-    osc.connect(filter)
+    oscillator.connect(
+      filter,
+    )
 
-    filter.connect(gain)
+    filter.connect(
+      gain,
+    )
 
-    gain.connect(output)
+    gain.connect(
+      destination,
+    )
 
-    osc.start(start)
+    oscillator.start(start)
 
-    osc.stop(
+    oscillator.stop(
       start +
         duration +
         0.1,
     )
 
-    audioNodesRef.current.push(
-      osc,
+    musicNodesRef.current.push(
+      oscillator,
       gain,
       filter,
     )
   }
 
   /* ===================================================
-     PLAY WARM HAPPY BIRTHDAY
+     PLAY HAPPY BIRTHDAY
   =================================================== */
 
-  const playMusic = async () => {
+  const playMusic = () => {
     stopMusic()
 
-    const AudioCtx =
-      window.AudioContext ||
-      window.webkitAudioContext
-
-    if (!AudioCtx) return
-
     const ctx =
-      new AudioCtx()
+      getAudioContext()
 
-    audioContextRef.current =
-      ctx
+    if (!ctx) return
+
+    /*
+      Karena context sudah di-unlock saat
+      pointerDown, biasanya state sudah
+      "running" ketika progress 100%.
+    */
 
     if (
       ctx.state ===
       'suspended'
     ) {
-      await ctx.resume()
+      ctx
+        .resume()
+        .catch(() => {})
     }
 
     const master =
@@ -765,13 +1174,8 @@ function App() {
     const feedback =
       ctx.createGain()
 
-    const delayVolume =
+    const wet =
       ctx.createGain()
-
-    /*
-      Fade in supaya awal
-      musik nggak mengagetkan.
-    */
 
     master.gain
       .setValueAtTime(
@@ -779,57 +1183,68 @@ function App() {
         ctx.currentTime,
       )
 
+    /*
+      Soft fade-in.
+    */
+
     master.gain
       .exponentialRampToValueAtTime(
-        0.72,
+        0.68,
         ctx.currentTime +
-          0.85,
+          0.8,
       )
 
     compressor.threshold.value =
-      -24
+      -25
 
     compressor.knee.value =
-      30
+      28
 
     compressor.ratio.value =
       3
 
     compressor.attack.value =
-      0.02
+      0.025
 
     compressor.release.value =
       0.6
 
     /*
-      Reverb-like echo ringan.
-      Sengaja kecil agar tidak creepy.
+      Very light echo saja.
+      Tidak dibuat terlalu besar
+      supaya tidak terasa creepy.
     */
 
     delay.delayTime.value =
-      0.27
+      0.21
 
     feedback.gain.value =
-      0.11
+      0.08
 
-    delayVolume.gain.value =
-      0.075
+    wet.gain.value =
+      0.055
 
     master.connect(
       compressor,
     )
 
-    master.connect(delay)
-
-    delay.connect(feedback)
-
-    feedback.connect(delay)
-
-    delay.connect(
-      delayVolume,
+    master.connect(
+      delay,
     )
 
-    delayVolume.connect(
+    delay.connect(
+      feedback,
+    )
+
+    feedback.connect(
+      delay,
+    )
+
+    delay.connect(
+      wet,
+    )
+
+    wet.connect(
       compressor,
     )
 
@@ -837,30 +1252,38 @@ function App() {
       ctx.destination,
     )
 
-    audioNodesRef.current.push(
+    musicNodesRef.current.push(
       master,
       compressor,
       delay,
       feedback,
-      delayVolume,
+      wet,
     )
+
+    /*
+      Beri 80 ms agar masuk
+      dengan halus.
+    */
 
     let cursor =
       ctx.currentTime +
-      0.7
+      0.08
 
     const songStart =
       cursor
 
-    /*
-      Chord lembut di belakang.
-    */
-
     const chordLength =
       3.55
 
+    /*
+      Chord background.
+    */
+
     CHORDS.forEach(
-      (chord, index) => {
+      (
+        chord,
+        index,
+      ) => {
         const start =
           songStart +
           index *
@@ -869,15 +1292,17 @@ function App() {
         createWarmChord({
           ctx,
 
-          notes: chord,
+          notes:
+            chord,
 
           start,
 
           duration:
             chordLength +
-            0.45,
+            0.4,
 
-          output: master,
+          destination:
+            master,
         })
 
         createSoftBass({
@@ -893,30 +1318,39 @@ function App() {
           duration:
             chordLength,
 
-          output: master,
+          destination:
+            master,
         })
       },
     )
 
     /*
-      Melody utama.
+      Main Happy Birthday melody.
     */
 
     MELODY.forEach(
-      ([note, duration]) => {
+      (
+        [
+          note,
+          duration,
+        ],
+      ) => {
         createSoftNote({
           ctx,
 
           frequency:
             NOTES[note],
 
-          start: cursor,
+          start:
+            cursor,
 
           duration,
 
-          volume: 0.061,
+          volume:
+            0.057,
 
-          output: master,
+          destination:
+            master,
         })
 
         cursor +=
@@ -925,17 +1359,24 @@ function App() {
       },
     )
 
-    /*
-      Fade out pelan.
-    */
-
     const ending =
-      cursor + 0.75
+      cursor +
+      0.8
+
+    /*
+      Fade-out terakhir.
+    */
 
     master.gain
       .setValueAtTime(
-        0.72,
-        ending - 1.6,
+        0.68,
+        Math.max(
+          ctx.currentTime +
+            0.8,
+
+          ending -
+            1.7,
+        ),
       )
 
     master.gain
@@ -946,127 +1387,195 @@ function App() {
 
     setIsPlaying(true)
 
-    const timer =
-      setTimeout(() => {
-        setIsPlaying(false)
-      }, SONG_DURATION_MS)
+    musicTimerRef.current =
+      setTimeout(
+        () => {
+          setIsPlaying(
+            false,
+          )
 
-    timersRef.current.push(
-      timer,
-    )
+          musicTimerRef.current =
+            null
+        },
+        SONG_DURATION_MS,
+      )
   }
+
+  /* ===================================================
+     SITE ENTRY
+  =================================================== */
+
+  const enterSite =
+    () => {
+      /*
+        Ini user gesture pertama,
+        langsung unlock audio.
+      */
+
+      unlockAudio()
+
+      setEntered(true)
+    }
+
+  /* ===================================================
+     MUSIC BUTTON
+  =================================================== */
+
+  const toggleMusic =
+    () => {
+      unlockAudio()
+
+      if (isPlaying) {
+        stopMusic()
+      } else {
+        playMusic()
+      }
+    }
 
   /* ===================================================
      GALLERY
   =================================================== */
 
-  const nextPhoto = () => {
-    setGalleryIndex(
-      (index) =>
-        (index + 1) %
-        PHOTOS.length,
-    )
-  }
-
-  const previousPhoto = () => {
-    setGalleryIndex(
-      (index) =>
-        (index -
-          1 +
-          PHOTOS.length) %
-        PHOTOS.length,
-    )
-  }
-
-  const handleGalleryDown = (
-    event,
-  ) => {
-    swipeStartRef.current =
-      event.clientX
-  }
-
-  const handleGalleryUp = (
-    event,
-  ) => {
-    if (
-      swipeStartRef.current ===
-      null
-    ) {
-      return
+  const nextPhoto =
+    () => {
+      setGalleryIndex(
+        (index) =>
+          (index + 1) %
+          PHOTOS.length,
+      )
     }
 
-    const distance =
-      event.clientX -
-      swipeStartRef.current
-
-    swipeStartRef.current =
-      null
-
-    if (
-      Math.abs(distance) <
-      45
-    ) {
-      return
+  const previousPhoto =
+    () => {
+      setGalleryIndex(
+        (index) =>
+          (index -
+            1 +
+            PHOTOS.length) %
+          PHOTOS.length,
+      )
     }
 
-    if (distance < 0) {
-      nextPhoto()
-    } else {
-      previousPhoto()
+  const handleGalleryDown =
+    (event) => {
+      swipeStartRef.current =
+        event.clientX
     }
-  }
+
+  const handleGalleryUp =
+    (event) => {
+      if (
+        swipeStartRef.current ===
+        null
+      ) {
+        return
+      }
+
+      const distance =
+        event.clientX -
+        swipeStartRef.current
+
+      swipeStartRef.current =
+        null
+
+      if (
+        Math.abs(
+          distance,
+        ) < 45
+      ) {
+        return
+      }
+
+      if (
+        distance < 0
+      ) {
+        nextPhoto()
+      } else {
+        previousPhoto()
+      }
+    }
 
   /* ===================================================
-     WISH MACHINE
+     RANDOM WISH
   =================================================== */
 
-  const shuffleWish = () => {
-    setWishPulse(false)
+  const shuffleWish =
+    () => {
+      setWishPulse(
+        false,
+      )
 
-    setWishIndex(
-      (index) => {
-        let next = index
+      setWishIndex(
+        (index) => {
+          let next =
+            index
 
-        while (
-          next === index
-        ) {
-          next =
-            Math.floor(
-              Math.random() *
-                RANDOM_WISHES.length,
+          while (
+            next ===
+            index
+          ) {
+            next =
+              Math.floor(
+                Math.random() *
+                  RANDOM_WISHES.length,
+              )
+          }
+
+          return next
+        },
+      )
+
+      requestAnimationFrame(
+        () => {
+          setWishPulse(
+            true,
+          )
+        },
+      )
+
+      if (
+        wishTimerRef.current
+      ) {
+        clearTimeout(
+          wishTimerRef.current,
+        )
+      }
+
+      wishTimerRef.current =
+        setTimeout(
+          () => {
+            setWishPulse(
+              false,
             )
-        }
-
-        return next
-      },
-    )
-
-    requestAnimationFrame(
-      () => {
-        setWishPulse(true)
-      },
-    )
-
-    const timer =
-      setTimeout(() => {
-        setWishPulse(false)
-      }, 650)
-
-    timersRef.current.push(
-      timer,
-    )
-  }
+          },
+          650,
+        )
+    }
 
   /* ===================================================
-     HOLD TO 100%
+     CELEBRATION
   =================================================== */
 
   const triggerCelebration =
     () => {
+      if (
+        celebrationTimerRef.current
+      ) {
+        clearTimeout(
+          celebrationTimerRef.current,
+        )
+      }
+
       /*
-        Reset dulu supaya
-        kalau diulang animasi
-        benar-benar restart.
+        Musik langsung start dari
+        AudioContext yang sudah running.
+      */
+
+      playMusic()
+
+      /*
+        Restart animation kalau
+        ditekan lagi.
       */
 
       setCelebrating(false)
@@ -1083,205 +1592,267 @@ function App() {
         },
       )
 
-      setHoldProgress(100)
+      setHoldProgress(
+        100,
+      )
 
-      playMusic()
+      celebrationTimerRef.current =
+        setTimeout(
+          () => {
+            setCelebrating(
+              false,
+            )
 
+            celebrationTimerRef.current =
+              null
+          },
+          SONG_DURATION_MS,
+        )
+    }
+
+  /* ===================================================
+     HOLD BUTTON
+  =================================================== */
+
+  const startHold =
+    () => {
       /*
-        Celebration mengikuti
-        durasi lagu.
+        SUPER IMPORTANT.
+
+        Dipanggil langsung saat pointerDown,
+        bukan setelah progress selesai.
+
+        Ini fix utama suara production.
       */
 
-      const timer =
-        setTimeout(() => {
-          setCelebrating(
-            false,
-          )
-        }, SONG_DURATION_MS)
+      armAudioForHold()
 
-      timersRef.current.push(
-        timer,
-      )
-    }
+      if (
+        holdProgress >=
+        100
+      ) {
+        triggerCelebration()
 
-  const startHold = () => {
-    if (
-      holdProgress >= 100
-    ) {
-      triggerCelebration()
-
-      return
-    }
-
-    clearInterval(
-      holdTimerRef.current,
-    )
-
-    holdTimerRef.current =
-      setInterval(() => {
-        setHoldProgress(
-          (progress) => {
-            const next =
-              Math.min(
-                progress + 4,
-                100,
-              )
-
-            if (
-              next >= 100
-            ) {
-              clearInterval(
-                holdTimerRef.current,
-              )
-
-              holdTimerRef.current =
-                null
-
-              setTimeout(
-                triggerCelebration,
-                100,
-              )
-            }
-
-            return next
-          },
-        )
-      }, 55)
-  }
-
-  const stopHold = () => {
-    clearInterval(
-      holdTimerRef.current,
-    )
-
-    holdTimerRef.current =
-      null
-
-    setHoldProgress(
-      (progress) =>
-        progress >= 100
-          ? 100
-          : 0,
-    )
-  }
-
-  /* ===================================================
-     CURSOR EFFECT
-  =================================================== */
-
-  const handlePointerMove = (
-    event,
-  ) => {
-    document.documentElement
-      .style
-      .setProperty(
-        '--mx',
-        `${event.clientX}px`,
-      )
-
-    document.documentElement
-      .style
-      .setProperty(
-        '--my',
-        `${event.clientY}px`,
-      )
-
-    if (
-      !heroRef.current ||
-      window
-        .matchMedia(
-          '(max-width: 760px)',
-        )
-        .matches
-    ) {
-      return
-    }
-
-    const rect =
-      heroRef.current
-        .getBoundingClientRect()
-
-    const x =
-      (event.clientX -
-        rect.left) /
-        rect.width -
-      0.5
-
-    const y =
-      (event.clientY -
-        rect.top) /
-        rect.height -
-      0.5
-
-    heroRef.current
-      .style
-      .setProperty(
-        '--rx',
-        `${y * -3.5}deg`,
-      )
-
-    heroRef.current
-      .style
-      .setProperty(
-        '--ry',
-        `${x * 4.5}deg`,
-      )
-  }
-
-  const resetTilt = () => {
-    if (!heroRef.current) {
-      return
-    }
-
-    heroRef.current
-      .style
-      .setProperty(
-        '--rx',
-        '0deg',
-      )
-
-    heroRef.current
-      .style
-      .setProperty(
-        '--ry',
-        '0deg',
-      )
-  }
-
-  /* ===================================================
-     CLEANUP
-  =================================================== */
-
-  useEffect(() => {
-    return () => {
-      timersRef.current.forEach(
-        clearTimeout,
-      )
+        return
+      }
 
       clearInterval(
         holdTimerRef.current,
       )
 
-      audioNodesRef.current
-        .forEach((node) => {
-          try {
-            if (
-              typeof node.stop ===
-              'function'
-            ) {
-              node.stop()
-            }
-          } catch (_) {
-            // ignored
-          }
-        })
+      holdTimerRef.current =
+        setInterval(
+          () => {
+            setHoldProgress(
+              (progress) => {
+                const next =
+                  Math.min(
+                    progress +
+                      4,
+                    100,
+                  )
+
+                if (
+                  next >=
+                  100
+                ) {
+                  clearInterval(
+                    holdTimerRef.current,
+                  )
+
+                  holdTimerRef.current =
+                    null
+
+                  /*
+                    Context sudah aktif karena
+                    armAudioForHold dijalankan
+                    sejak pointerDown.
+                  */
+
+                  setTimeout(
+                    () => {
+                      triggerCelebration()
+                    },
+                    30,
+                  )
+                }
+
+                return next
+              },
+            )
+          },
+          55,
+        )
+    }
+
+  const stopHold =
+    () => {
+      clearInterval(
+        holdTimerRef.current,
+      )
+
+      holdTimerRef.current =
+        null
+
+      stopAudioKeeper()
+
+      setHoldProgress(
+        (progress) =>
+          progress >= 100
+            ? 100
+            : 0,
+      )
+    }
+
+  /* ===================================================
+     CURSOR
+  =================================================== */
+
+  const handlePointerMove =
+    (event) => {
+      document
+        .documentElement
+        .style
+        .setProperty(
+          '--mx',
+          `${event.clientX}px`,
+        )
+
+      document
+        .documentElement
+        .style
+        .setProperty(
+          '--my',
+          `${event.clientY}px`,
+        )
 
       if (
-        audioContextRef.current
+        !heroRef.current ||
+        window
+          .matchMedia(
+            '(max-width: 760px)',
+          )
+          .matches
       ) {
-        audioContextRef.current
+        return
+      }
+
+      const rect =
+        heroRef.current
+          .getBoundingClientRect()
+
+      const x =
+        (event.clientX -
+          rect.left) /
+          rect.width -
+        0.5
+
+      const y =
+        (event.clientY -
+          rect.top) /
+          rect.height -
+        0.5
+
+      heroRef.current
+        .style
+        .setProperty(
+          '--rx',
+          `${
+            y * -3.5
+          }deg`,
+        )
+
+      heroRef.current
+        .style
+        .setProperty(
+          '--ry',
+          `${
+            x * 4.5
+          }deg`,
+        )
+    }
+
+  const resetTilt =
+    () => {
+      if (
+        !heroRef.current
+      ) {
+        return
+      }
+
+      heroRef.current
+        .style
+        .setProperty(
+          '--rx',
+          '0deg',
+        )
+
+      heroRef.current
+        .style
+        .setProperty(
+          '--ry',
+          '0deg',
+        )
+    }
+
+  /* ===================================================
+     CLEAN UP
+  =================================================== */
+
+  useEffect(() => {
+    return () => {
+      clearInterval(
+        holdTimerRef.current,
+      )
+
+      clearTimeout(
+        musicTimerRef.current,
+      )
+
+      clearTimeout(
+        celebrationTimerRef.current,
+      )
+
+      clearTimeout(
+        wishTimerRef.current,
+      )
+
+      stopAudioKeeper()
+
+      musicNodesRef.current
+        .forEach(
+          (node) => {
+            try {
+              if (
+                typeof node.stop ===
+                'function'
+              ) {
+                node.stop()
+              }
+            } catch (_) {
+              //
+            }
+          },
+        )
+
+      /*
+        Context hanya ditutup ketika
+        halaman benar-benar unmount.
+      */
+
+      if (
+        audioContextRef.current &&
+        audioContextRef
+          .current
+          .state !==
+          'closed'
+      ) {
+        audioContextRef
+          .current
           .close()
-          .catch(() => {})
+          .catch(
+            () => {},
+          )
       }
     }
   }, [])
@@ -1292,11 +1863,7 @@ function App() {
 
   return (
     <main
-      className={`app ${
-        entered
-          ? 'entered'
-          : ''
-      }`}
+      className="app"
       onPointerMove={
         handlePointerMove
       }
@@ -1328,14 +1895,13 @@ function App() {
         aria-hidden="true"
       />
 
-      <div
-        className="floating-dots"
-        aria-hidden="true"
-      >
+      <div className="floating-dots">
         {FLOATING_DOTS.map(
           (dot) => (
             <span
-              key={dot.id}
+              key={
+                dot.id
+              }
               style={{
                 left:
                   dot.left,
@@ -1343,27 +1909,31 @@ function App() {
                 top:
                   dot.top,
 
-                animationDelay:
-                  dot.delay,
-
                 width:
                   dot.size,
 
                 height:
                   dot.size,
+
+                animationDelay:
+                  dot.delay,
               }}
             />
           ),
         )}
       </div>
 
-      {/* INTRO */}
+      {/* ===============================================
+          INTRO
+      =============================================== */}
 
       {!entered && (
         <section className="intro-screen">
           <div className="intro-card">
             <div className="intro-orbit">
-              <span>R</span>
+              <span>
+                R
+              </span>
             </div>
 
             <p className="eyebrow">
@@ -1387,8 +1957,8 @@ function App() {
 
             <button
               className="primary-btn"
-              onClick={() =>
-                setEntered(true)
+              onClick={
+                enterSite
               }
             >
               Buka dulu
@@ -1405,36 +1975,41 @@ function App() {
         </section>
       )}
 
-      {/* =================================================
-          LONG CELEBRATION
-      ================================================= */}
+      {/* ===============================================
+          BIRTHDAY CELEBRATION
+      =============================================== */}
 
       {celebrating && (
         <div
           className="birthday-celebration"
           style={{
-            '--song-duration':
-              '17.5s',
+            '--celebration-duration':
+              '17.4s',
           }}
         >
           <div className="birthday-darken" />
 
           <div className="birthday-aurora" />
 
-          {/* Stars */}
+          {/* STARS */}
 
           <div className="birthday-stars">
-            {Array.from({
-              length: 38,
-            }).map(
-              (_, index) => (
+            {STARS.map(
+              (star) => (
                 <span
                   key={
-                    index
+                    star.id
                   }
                   style={{
-                    '--star-i':
-                      index,
+                    left: `${star.left}%`,
+
+                    top: `${star.top}%`,
+
+                    fontSize: `${star.size}px`,
+
+                    animationDelay: `${star.delay}s`,
+
+                    animationDuration: `${star.duration}s`,
                   }}
                 >
                   ✦
@@ -1452,33 +2027,34 @@ function App() {
                 index,
               ) => (
                 <div
-                  key={index}
+                  key={
+                    index
+                  }
                   className="firework"
                   style={{
                     left: `${firework.x}%`,
 
                     top: `${firework.y}%`,
 
-                    '--delay': `${firework.delay}s`,
+                    '--firework-delay': `${firework.delay}s`,
 
-                    '--scale':
+                    '--firework-scale':
                       firework.scale,
                   }}
                 >
                   <span className="firework-center" />
 
                   {SPARKS.map(
-                    (spark) => (
+                    (
+                      spark,
+                    ) => (
                       <span
                         key={
-                          spark
+                          spark.id
                         }
                         className="firework-spark"
                         style={{
-                          '--angle': `${
-                            spark *
-                            15
-                          }deg`,
+                          '--angle': `${spark.angle}deg`,
                         }}
                       />
                     ),
@@ -1488,19 +2064,19 @@ function App() {
             )}
           </div>
 
-          {/* Main text */}
+          {/* MAIN TEXT */}
 
           <div className="birthday-copy">
-            <p className="birthday-top-label">
+            <p className="birthday-kicker">
               YOUR DAY · YOUR MOMENT
             </p>
 
             <h2>
-              <span className="happy">
+              <span className="happy-text">
                 HAPPY
               </span>
 
-              <span className="birthday">
+              <span className="birthday-text">
                 BIRTHDAY
               </span>
 
@@ -1511,20 +2087,20 @@ function App() {
 
             <div className="birthday-divider" />
 
-            <p className="birthday-wish">
+            <p className="birthday-main-message">
               Semoga banyak hal
               baik datang di umur
               yang baru ini.
             </p>
 
-            <p className="birthday-wish-sub">
+            <p className="birthday-sub-message">
               Have fun, nikmatin
               liburannya, dan
               pulang bawa cerita
               yang seru.
             </p>
 
-            <div className="birthday-love">
+            <div className="birthday-heart">
               <Heart
                 size={20}
                 fill="currentColor"
@@ -1536,14 +2112,24 @@ function App() {
 
           <div className="celebration-confetti">
             {CONFETTI.map(
-              (item) => (
+              (piece) => (
                 <span
                   key={
-                    item
+                    piece.id
                   }
                   style={{
-                    '--i':
-                      item,
+                    left: `${piece.left}%`,
+
+                    background:
+                      piece.color,
+
+                    animationDelay: `${piece.delay}s`,
+
+                    animationDuration: `${piece.duration}s`,
+
+                    '--drift': `${piece.drift}px`,
+
+                    '--rotation': `${piece.rotation}deg`,
                   }}
                 />
               ),
@@ -1552,12 +2138,14 @@ function App() {
         </div>
       )}
 
-      {/* NAV */}
+      {/* ===============================================
+          NAV
+      =============================================== */}
 
       <nav className="nav-wrap">
         <a
-          href="#top"
           className="logo"
+          href="#top"
         >
           R<span>.</span>
         </a>
@@ -1569,9 +2157,7 @@ function App() {
         <button
           className="music-button"
           onClick={
-            isPlaying
-              ? stopMusic
-              : playMusic
+            toggleMusic
           }
         >
           {isPlaying ? (
@@ -1592,7 +2178,9 @@ function App() {
         </button>
       </nav>
 
-      {/* HERO */}
+      {/* ===============================================
+          HERO
+      =============================================== */}
 
       <section
         className="hero"
@@ -1600,7 +2188,9 @@ function App() {
       >
         <div
           className="hero-card"
-          ref={heroRef}
+          ref={
+            heroRef
+          }
           onPointerLeave={
             resetTilt
           }
@@ -1616,6 +2206,7 @@ function App() {
 
             <h1>
               Happy Birthday,
+
               <span>
                 Muhammad Rizki
                 Aditya.
@@ -1658,9 +2249,7 @@ function App() {
               <button
                 className="secondary-btn"
                 onClick={
-                  isPlaying
-                    ? stopMusic
-                    : playMusic
+                  toggleMusic
                 }
               >
                 {isPlaying ? (
@@ -1700,9 +2289,9 @@ function App() {
         </div>
       </section>
 
-      {/* =================================================
+      {/* ===============================================
           MESSAGE
-      ================================================= */}
+      =============================================== */}
 
       <section
         className="section"
@@ -1773,13 +2362,15 @@ function App() {
           <div className="message-body-wrap">
             <div className="message-cover">
               <div className="cover-ring">
-                <span>R</span>
+                <span>
+                  R
+                </span>
               </div>
 
               <p>
                 Ada sedikit ucapan
-                yang sengaja disimpan
-                di sini.
+                yang sengaja
+                disimpan di sini.
               </p>
             </div>
 
@@ -1800,18 +2391,19 @@ function App() {
                 ketemu jalannya,
                 yang lagi dipikirin
                 semoga cepat kelar,
-                dan yang bikin capek
-                semoga nggak betah
-                lama-lama.
+                dan yang bikin
+                capek semoga nggak
+                betah lama-lama.
               </p>
 
               <p>
                 Tetap jadi orang
                 yang seru diajak
-                ngobrol, tetap punya
-                waktu buat diri
-                sendiri, dan jangan
-                lupa nikmatin yang
+                ngobrol, tetap
+                punya waktu buat
+                diri sendiri, dan
+                jangan lupa
+                nikmatin yang
                 sekarang. Nggak
                 semua hal harus
                 langsung jadi besar
@@ -1833,7 +2425,9 @@ function App() {
               </p>
 
               <div className="special-line">
-                <span>PS.</span>
+                <span>
+                  PS.
+                </span>
 
                 <p>
                   Kapan makan
@@ -1885,12 +2479,12 @@ function App() {
         </div>
       </section>
 
-      {/* =================================================
+      {/* ===============================================
           GALLERY
-      ================================================= */}
+      =============================================== */}
 
-      <section className="section gallery-section">
-        <div className="section-heading gallery-title">
+      <section className="section">
+        <div className="section-heading gallery-heading">
           <div>
             <p className="eyebrow">
               03 · LITTLE MOMENTS
@@ -1922,6 +2516,10 @@ function App() {
           onPointerUp={
             handleGalleryUp
           }
+          onPointerCancel={() => {
+            swipeStartRef.current =
+              null
+          }}
         >
           <button
             className="gallery-arrow left"
@@ -1940,7 +2538,9 @@ function App() {
                 offset,
               }) => {
                 const distance =
-                  Math.abs(offset)
+                  Math.abs(
+                    offset,
+                  )
 
                 const visible =
                   distance <= 2
@@ -1949,18 +2549,21 @@ function App() {
                   offset * 58
 
                 const y =
-                  distance * 18
+                  distance *
+                  18
 
                 const scale =
                   Math.max(
                     0.78,
+
                     1 -
                       distance *
                         0.09,
                   )
 
                 const rotate =
-                  offset * 4.5
+                  offset *
+                  4.5
 
                 return (
                   <button
@@ -1968,7 +2571,8 @@ function App() {
                       photo.src
                     }
                     className={`photo-card ${
-                      offset === 0
+                      offset ===
+                      0
                         ? 'active'
                         : ''
                     }`}
@@ -1985,7 +2589,8 @@ function App() {
                           : 0,
 
                       pointerEvents:
-                        offset === 0
+                        offset ===
+                        0
                           ? 'auto'
                           : 'none',
                     }}
@@ -2012,12 +2617,15 @@ function App() {
                     <div className="photo-copy">
                       <span>
                         {String(
-                          index + 1,
+                          index +
+                            1,
                         ).padStart(
                           2,
                           '0',
                         )}
+
                         {' / '}
+
                         {String(
                           PHOTOS.length,
                         ).padStart(
@@ -2093,13 +2701,15 @@ function App() {
         </div>
       </section>
 
-      {/* RANDOM WISH */}
+      {/* ===============================================
+          RANDOM WISH
+      =============================================== */}
 
       <section className="section">
         <div className="wish-box">
           <div className="wish-decoration">
             <Sparkles
-              size={50}
+              size={52}
             />
           </div>
 
@@ -2123,7 +2733,9 @@ function App() {
                 : ''
             }`}
           >
-            <span>✦</span>
+            <span>
+              ✦
+            </span>
 
             <p>
               {currentWish}
@@ -2145,7 +2757,9 @@ function App() {
         </div>
       </section>
 
-      {/* FINAL */}
+      {/* ===============================================
+          FINAL HOLD
+      =============================================== */}
 
       <section className="section">
         <div className="final-card">
@@ -2186,17 +2800,58 @@ function App() {
                 ? 'complete'
                 : ''
             }`}
+
+            /*
+              startHold dipanggil LANGSUNG
+              oleh pointerDown.
+
+              Di dalam startHold ada
+              armAudioForHold().
+            */
+
             onPointerDown={
               startHold
             }
+
             onPointerUp={
               stopHold
             }
+
             onPointerLeave={
               stopHold
             }
+
             onPointerCancel={
               stopHold
+            }
+
+            onKeyDown={
+              (event) => {
+                if (
+                  (
+                    event.key ===
+                      'Enter' ||
+                    event.key ===
+                      ' '
+                  ) &&
+                  !event.repeat
+                ) {
+                  startHold()
+                }
+              }
+            }
+
+            onKeyUp={
+              (event) => {
+                if (
+                  event.key ===
+                    'Enter' ||
+                  event.key ===
+                    ' '
+                ) {
+                  stopHold()
+                }
+              }
             }
           >
             <span
@@ -2231,7 +2886,9 @@ function App() {
 
       <footer>
         <div>
-          <span>R.</span>
+          <span>
+            R.
+          </span>
 
           Made for Muhammad
           Rizki Aditya
@@ -2243,7 +2900,9 @@ function App() {
         </p>
       </footer>
 
-      {/* PHOTO MODAL */}
+      {/* ===============================================
+          PHOTO MODAL
+      =============================================== */}
 
       {activePhoto !==
         null && (
@@ -2321,9 +2980,11 @@ function App() {
                 <button
                   onClick={() =>
                     setActivePhoto(
-                      (activePhoto -
+                      (
+                        activePhoto -
                         1 +
-                        PHOTOS.length) %
+                        PHOTOS.length
+                      ) %
                         PHOTOS.length,
                     )
                   }
@@ -2345,8 +3006,10 @@ function App() {
                 <button
                   onClick={() =>
                     setActivePhoto(
-                      (activePhoto +
-                        1) %
+                      (
+                        activePhoto +
+                        1
+                      ) %
                         PHOTOS.length,
                     )
                   }
